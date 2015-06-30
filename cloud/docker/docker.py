@@ -204,7 +204,8 @@ options:
         configuration out of date. "restarted" unconditionally restarts (or
         starts) the matching containers. "stopped" and '"killed" stop and kill
         all matching containers. "absent" stops and then' removes any matching
-        containers.
+        containers. "recreated" sequence of states "absent" and "started", 
+        you can to use it if you need upgrade version of container.
     required: false
     default: started
     choices:
@@ -215,6 +216,7 @@ options:
       - stopped
       - killed
       - absent
+      - recreated
   privileged:
     description:
       - Whether the container should run in privileged mode or not.
@@ -377,6 +379,15 @@ EXAMPLES = '''
     name: ohno
     image: someuser/oldandbusted
     state: absent
+
+# Recreate a container.
+
+- name: obsolete container
+  docker:
+    name: ohno
+    image: someuser/oldandbusted
+    state: recreated
+
 '''
 
 HAS_DOCKER_PY = True
@@ -1482,6 +1493,11 @@ def absent(manager, containers, count, name):
     manager.remove_containers(containers.deployed)
     containers.notice_changed(containers.deployed)
 
+def recreated(manager, containers, count, name):
+    '''Recreate any matching containers.'''
+    absent(manager, containers, count, name)
+    started(manager, containers, count, name)
+
 def main():
     module = AnsibleModule(
         argument_spec = dict(
@@ -1513,7 +1529,7 @@ def main():
             env             = dict(type='dict'),
             dns             = dict(),
             detach          = dict(default=True, type='bool'),
-            state           = dict(default='started', choices=['present', 'started', 'reloaded', 'restarted', 'stopped', 'killed', 'absent', 'running']),
+            state           = dict(default='started', choices=['present', 'started', 'reloaded', 'restarted', 'stopped', 'killed', 'absent', 'running', 'recreated']),
             restart_policy  = dict(default=None, choices=['always', 'on-failure', 'no']),
             restart_policy_retry = dict(default=0, type='int'),
             extra_hosts     = dict(type='dict'),
@@ -1574,6 +1590,8 @@ def main():
             killed(manager, containers, count, name)
         elif state == 'absent':
             absent(manager, containers, count, name)
+        elif state == 'recreated':
+            recreated(manager, containers, count, name)
         else:
             module.fail_json(msg='Unrecognized state %s. Must be one of: '
                                  'present; started; reloaded; restarted; '
